@@ -191,7 +191,8 @@ def has_mac_variant(layout):
 
 
 def layouts():
-    return [part.strip() for part in live_str("input:kb_layout").split(",")]
+    """kb_layout as Hyprland has it now; [] when Hyprland cannot be asked."""
+    return [part.strip() for part in live_str("input:kb_layout").split(",") if part.strip()]
 
 
 def slots(lays):
@@ -492,6 +493,9 @@ def main(argv):
         return 0
     if cmd == "cheatsheet":
         lays = layouts()
+        if not lays:
+            print(json.dumps({"error": "Hyprland did not say which keyboard layout you use", "rows": []}))
+            return 1
         lay = active_layout(lays)  # the layout you type with right now
         variant = "mac" if has_mac_variant(lay) else ""
         print(json.dumps({"layout": lay, "variant": variant, "rows": cheatsheet(lay, variant)}, ensure_ascii=False))

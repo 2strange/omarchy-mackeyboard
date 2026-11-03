@@ -7,7 +7,8 @@ import Quickshell.Io
 ShellRoot {
   id: shell
 
-  readonly property string helper: decodeURIComponent(Qt.resolvedUrl("../keyboard-config.py").toString().replace(/^file:\/\//, ""))
+  // A plain path: Quickshell turns a URL that leaves its config folder ("../") into qrc:/qs-blackhole.
+  readonly property string helper: Quickshell.shellDir + "/../keyboard-config.py"
   property var sheet: ({ rows: [] })
   property string error: ""
   // Characters people look for most when they come from a Mac: shown brighter.
@@ -24,7 +25,8 @@ ShellRoot {
     running: true
     stdout: StdioCollector {
       onStreamFinished: {
-        try { shell.sheet = JSON.parse(text) } catch (e) { shell.error = "Could not read your layout: " + e }
+        try { shell.sheet = JSON.parse(text) } catch (e) { shell.error = "Could not read your layout (" + e + ")"; return }
+        if (shell.sheet.error) shell.error = shell.sheet.error
       }
     }
   }
