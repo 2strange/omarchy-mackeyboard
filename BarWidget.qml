@@ -62,24 +62,24 @@ BarWidget {
     function toggle(): void { root.togglePanel() }
   }
 
-  // Apple logo (nf-fa-apple). Bright = Mac functions on, dimmed = plain F1-F12.
-  readonly property string glyph: ready ? "\uf179" : "󰌌"
+  // Apple logo (nf-fa-apple). Bright = Mac functions on, dimmed = plain F1-F12 or no Fn switch here.
+  readonly property string glyph: "\uf179"
   readonly property bool macOn: mode === "media"
 
   readonly property string tooltip: {
-    if (!service) return "Function keys service is loading"
-    if (!available) return "This keyboard is not driven by hid_apple"
-    if (!service.setupDone) return "Function keys: click to run the one-time setup"
-    if (service.sudoDenied) return "Function keys: setup is incomplete, click to run it again"
+    if (!service) return "Mac Keyboard is loading"
+    if (!available) return "Mac Keyboard: layout and keys (no Apple function row here)"
+    if (!service.setupDone) return "Mac Keyboard: the Fn switch needs a one-time setup (see the menu)"
+    if (service.sudoDenied) return "Mac Keyboard: the Fn setup is incomplete (see the menu)"
     if (service.busy) return "Switching function-row mode"
-    if (mode === "media") return "Mac Fn keys on (right-click to switch)"
-    if (mode === "fkeys") return "Mac Fn keys off (right-click to switch)"
+    if (mode === "media") return "Mac functions on (right-click to switch)"
+    if (mode === "fkeys") return "Mac functions off (right-click to switch)"
     return "Function row is in an unmanaged mode"
   }
 
-  // Nothing to show on machines without an Apple keyboard.
-  visible: available
-  implicitWidth: available ? button.implicitWidth : 0
+  // Shown on every machine: the Mac layout switch works without an Apple keyboard too
+  // (e.g. in a VM); the Fn part of the menu says when it is not available.
+  implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
 
   WidgetButton {
@@ -88,12 +88,10 @@ BarWidget {
     bar: root.bar
     text: root.glyph
     tooltipText: root.tooltip
-    dimmed: root.service ? (root.service.busy || (root.ready && !root.macOn)) : false
+    dimmed: root.service ? (root.service.busy || !root.ready || !root.macOn) : false
     onPressed: function(buttonCode) {
-      if (!root.service) return
-      if (!root.ready) { if (buttonCode === Qt.LeftButton) root.service.runSetup(); return }
-      if (buttonCode === Qt.RightButton) root.service.toggle()
-      else if (buttonCode === Qt.LeftButton) root.togglePanel()
+      if (buttonCode === Qt.LeftButton) root.togglePanel()
+      else if (buttonCode === Qt.RightButton && root.ready) root.service.toggle()
     }
   }
 }
