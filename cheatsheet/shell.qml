@@ -13,6 +13,8 @@ ShellRoot {
   property string error: ""
   // Characters people look for most when they come from a Mac: shown brighter.
   readonly property string wanted: "@|\\{}[]~€≠…–—„“”‚‘’«»"
+  // Dead keys arrive with a combining underline (U+0332); compare the bare character.
+  function isWanted(c) { const bare = c.replace(/\u0332/g, ""); return bare !== "" && wanted.indexOf(bare) >= 0 }
 
   readonly property color bg: "#1e1e22"
   readonly property color fg: "#e8e6e3"
@@ -76,8 +78,8 @@ ShellRoot {
               delegate: Rectangle {
                 id: cap
                 required property var modelData
-                readonly property bool hot: modelData.option !== "" && shell.wanted.indexOf(modelData.option) >= 0
-                readonly property bool hotShift: modelData.shift_option !== "" && shell.wanted.indexOf(modelData.shift_option) >= 0
+                readonly property bool hot: shell.isWanted(modelData.option)
+                readonly property bool hotShift: shell.isWanted(modelData.shift_option)
                 width: win.cap
                 height: win.cap * 1.1
                 radius: 8
