@@ -8,8 +8,8 @@ import qs.Ui
 // in Service.qml; this file only paints it.
 Panel {
   id: root
-  moduleName: "io.github.2strange.mac-fnkeys"
-  ipcTarget: "io.github.2strange.mac-fnkeys"
+  moduleName: "io.github.2strange.mackeyboard"
+  ipcTarget: "io.github.2strange.mackeyboard"
   manageIpc: false
 
   property var anchorItem: null

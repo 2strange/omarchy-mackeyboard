@@ -17,7 +17,7 @@ Item {
   // Injected by omarchy-shell.
   property var shell: null
 
-  readonly property string pluginId: "io.github.2strange.mac-fnkeys"
+  readonly property string pluginId: "io.github.2strange.mackeyboard"
   readonly property string helper: "/usr/local/libexec/omarchy-mac-fnmode"
   readonly property string parameterPath: "/sys/module/hid_apple/parameters/fnmode"
   readonly property string setupScript: localPath(Qt.resolvedUrl("scripts/setup"))

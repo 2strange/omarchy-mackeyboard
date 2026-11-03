@@ -7,7 +7,7 @@ import qs.Ui
 // bars agree. Left click opens the menu (Panel.qml), right click toggles.
 BarWidget {
   id: root
-  moduleName: "io.github.2strange.mac-fnkeys"
+  moduleName: "io.github.2strange.mackeyboard"
 
   // Omarchy 4.x hands third-party widgets a scoped PluginShellApi
   // (bar.shell.serviceFor) instead of ShellRoot._services. The lookup is not
@@ -56,7 +56,7 @@ BarWidget {
   }
 
   IpcHandler {
-    target: "io.github.2strange.mac-fnkeys"
+    target: "io.github.2strange.mackeyboard"
     function open(): void { root.open() }
     function close(): void { root.close() }
     function toggle(): void { root.togglePanel() }

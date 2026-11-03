@@ -11,7 +11,7 @@
 set -euo pipefail
 export PATH=/usr/bin:/usr/sbin
 
-plugin_id=io.github.2strange.mac-fnkeys
+plugin_id=io.github.2strange.mackeyboard
 bindings_file=${XDG_CONFIG_HOME:-$HOME/.config}/hypr/bindings.lua
 marker_begin="-- >>> $plugin_id >>>"
 marker_end="-- <<< $plugin_id <<<"
@@ -37,6 +37,9 @@ printf 'Removing the root helper and sudo rule (asks for your password).\n'
     printf "could not restore the modprobe default\n" >&2
   rm -f "$helper" "$policy"
 ' uninstall-root
+
+# The menu's settings (Mac layout, special keys).
+rm -f "${XDG_CONFIG_HOME:-$HOME/.config}/hypr/mackeyboard.lua"
 
 if [ -f "$bindings_file" ] && grep -qF "$marker_begin" "$bindings_file"; then
   tmp=$(mktemp)

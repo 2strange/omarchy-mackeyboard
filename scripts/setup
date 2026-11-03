@@ -7,7 +7,8 @@
 #   2. Switches hid_apple to fnmode=1 (printed keys without Fn) and persists
 #      it in /etc/modprobe.d/hid_apple.conf.
 #   3. Adds one marked block to ~/.config/hypr/bindings.lua that loads the
-#      plugin's F3/F4/F6 bindings, then reloads Hyprland.
+#      plugin's function-row bindings and layout switch (skipped if the menu
+#      already added it), then reloads Hyprland.
 #
 # Privilege boundary: root never opens a file under the plugin checkout. The
 # privileged script (scripts/setup-root) is read into this process and passed
@@ -19,7 +20,7 @@ set -euo pipefail
 export PATH=/usr/bin:/usr/sbin
 
 plugin_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-plugin_id=io.github.2strange.mac-fnkeys
+plugin_id=io.github.2strange.mackeyboard
 parameter=/sys/module/hid_apple/parameters/fnmode
 bindings_file=${XDG_CONFIG_HOME:-$HOME/.config}/hypr/bindings.lua
 marker_begin="-- >>> $plugin_id >>>"
@@ -53,13 +54,13 @@ else
   cat >>"$bindings_file" <<EOF
 
 $marker_begin
--- Mac Fn keys plugin: F3 Mission Control, F4 Spotlight/Launchpad, F6 Do Not Disturb.
+-- Mac Keyboard plugin: function-row bindings and the Mac layout switch.
 -- Managed by the plugin's setup/uninstall scripts; edit the plugin copy instead.
-local macbook_fn_keys = os.getenv("HOME") .. "/.config/omarchy/plugins/$plugin_id/hypr/bindings.lua"
-local macbook_fn_keys_file = io.open(macbook_fn_keys)
-if macbook_fn_keys_file then
-  macbook_fn_keys_file:close()
-  dofile(macbook_fn_keys)
+local mac_keyboard = os.getenv("HOME") .. "/.config/omarchy/plugins/$plugin_id/hypr/bindings.lua"
+local mac_keyboard_file = io.open(mac_keyboard)
+if mac_keyboard_file then
+  mac_keyboard_file:close()
+  dofile(mac_keyboard)
 end
 $marker_end
 EOF
