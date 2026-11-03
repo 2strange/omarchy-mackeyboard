@@ -291,12 +291,13 @@ def render(s, lays):
 def snapshot(path):
     """What is at path now, symlinks included, so a rollback restores exactly that."""
     if os.path.islink(path):
-        return ("link", os.readlink(path), read(path))  # the link and what its target held
-    return ("file", None, read(path))
+        # the link, what its target held, and the target itself (it may not exist yet: a dangling link)
+        return ("link", os.readlink(path), read(path), os.path.realpath(path))
+    return ("file", None, read(path), None)
 
 
 def restore(path, snap):
-    kind, target, text = snap
+    kind, target, text, real = snap
     if kind == "link":
         if os.path.lexists(path) and not (os.path.islink(path) and os.readlink(path) == target):
             os.remove(path)
@@ -304,6 +305,8 @@ def restore(path, snap):
             os.symlink(target, path)
         if text is not None:
             put(path, text)  # writes through the link into its target again
+        elif os.path.lexists(real) and not os.path.islink(real):
+            os.remove(real)  # the target did not exist before: remove what the failed write created
         return
     put(path, text)
 

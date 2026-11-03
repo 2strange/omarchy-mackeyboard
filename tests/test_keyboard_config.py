@@ -187,6 +187,13 @@ class Apply(Case):
         self.assertEqual(kc.main(["reset"]), 1)  # reset fails too (Hyprland unreachable): the link comes back
         self.assertTrue((self.dir / "mackeyboard.lua").is_symlink())
 
+    def test_failed_write_through_a_dangling_symlink_leaves_no_target(self):
+        (self.dir / "mackeyboard.lua").symlink_to(self.dir / "not-yet.lua")
+        self.hypr.fail = True
+        self.assertEqual(kc.main(["set", "key.XF86LaunchA=menu"]), 1)
+        self.assertTrue((self.dir / "mackeyboard.lua").is_symlink())
+        self.assertFalse((self.dir / "not-yet.lua").exists())
+
     def test_reset_removes_the_settings(self):
         kc.main(["set", "mac_layout=true"])
         self.assertEqual(kc.main(["reset"]), 0)
