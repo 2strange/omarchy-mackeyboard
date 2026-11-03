@@ -17,9 +17,9 @@
 After years on a Mac your fingers know where `@`, `|` and `{` are: on the Option key. Mac Keyboard
 brings that back on Omarchy, together with the function row the way macOS has it.
 
-- **Mac layout.** The right Option key types the Mac characters of *your* layout: Option+L is `@`,
-  Option+7 is `|`, Option+Shift+7 is `\`, Option+8 and 9 are `{` and `}`, Option+5 and 6 are `[` and
-  `]`. It keeps your layout (German, US, French ...) and only switches on its xkb `mac` variant. The
+- **Mac layout.** The right Option key types the Mac characters of *your* layout; on a German Mac
+  layout Option+L is `@`, Option+7 is `|`, Option+Shift+7 is `\`, Option+8 and 9 are `{` and `}`,
+  Option+5 and 6 are `[` and `]`. It keeps your layout (German, US, French ...) and only switches on its xkb `mac` variant. The
   left Alt stays Alt for Hyprland's shortcuts. **All Option characters…** in the menu opens a cheat
   sheet of your whole keyboard, read from your layout, not typed in by hand.
 - **Function row.** The keys send their printed functions (brightness, volume, media) without Fn,
@@ -90,10 +90,13 @@ Setup does three things, all reversible:
    loads `hypr/bindings.lua` from the plugin folder (skipped if the menu already
    added it). Nothing already in that file is modified.
 
-**Coming from Mac Fn keys** (`io.github.2strange.mac-fnkeys`) or the upstream MacBook Function Keys
-plugin: they install the same helper at the same path, so the Fn switch keeps working. Remove the old
-plugin's block from `bindings.lua` with its `scripts/uninstall`, or by deleting the marked block, so
-the special keys are not bound twice.
+**Coming from Mac Fn keys** (`io.github.2strange.mac-fnkeys`) or the upstream
+[MacBook Function Keys](https://github.com/alnandr/omarchy-macbook-fn-keys) plugin: do not keep both.
+They install the same helper at the same path, so the Fn switch keeps working, but both bind the same
+keys. Delete the old plugin's marked block from `~/.config/hypr/bindings.lua` by hand and remove the
+old plugin with `omarchy plugin remove`. **Do not run the old plugin's `scripts/uninstall`**: it
+removes the shared helper and sudoers rule (run this plugin's `scripts/setup` again if you did). Until
+the old block is gone, the menu refuses to change the layout or the keys and says why.
 
 ## How the Fn switch works
 
@@ -132,13 +135,18 @@ a fixed string.
   state line at its top, reloads Hyprland and checks `hyprctl configerrors`. If Hyprland reports a new
   error, every file it touched is put back and the menu says so.
 - The layout switch sets `kb_variant` to `mac` for each of your layouts that has a Mac variant in
-  `/usr/share/X11/xkb/symbols`; the others keep theirs. Switching it off restores the variant you had.
-  Until you touch the switch, your own `kb_variant` stays in charge.
+  `/usr/share/X11/xkb/symbols`; the others keep theirs. Switching it off restores the variants you had.
+  Until you first use the menu, your own `kb_variant` stays in charge; after that the plugin sets it,
+  remembering your own variant per layout. When you change `kb_layout`, the menu rewrites it on its
+  next opening. Only variants named exactly `mac` count: Swiss `ch(de_mac)` / `ch(fr_mac)` are not
+  switched (set them in `input.lua` yourself).
+- The examples next to the switch and the cheat sheet come from your active layout: on a US Mac layout
+  `@` stays on Shift+2, so there are fewer Option examples.
 - A special key bound by Omarchy (keyboard light, microphone mute) keeps Omarchy's binding unless you
   pick something else, then the plugin unbinds it first. Your own command is stored as one line and
   escaped into the Lua file.
-- The cheat sheet (`cheatsheet/`, run with `qs -p`) gets its characters from libxkbcommon for your
-  layout, so it matches what the keys type.
+- The cheat sheet (`cheatsheet/`, run with `qs -n -p`, one window at a time) gets its characters
+  from libxkbcommon for the layout you type with, so it matches what the keys type.
 
 ```sh
 python3 ~/.config/omarchy/plugins/io.github.2strange.mackeyboard/keyboard-config.py get
@@ -162,6 +170,9 @@ omarchy plugin remove io.github.2strange.mackeyboard
 
 Uninstall restores Omarchy's Apple default (`fnmode=2`), removes the helper
 and sudoers rule, `~/.config/hypr/mackeyboard.lua` and the marked block from `bindings.lua`.
+
+Used only the layout switch and the keys (no Fn setup)? Then `keyboard-config.py reset`, delete the
+marked block in `bindings.lua`, and `omarchy plugin remove` are enough, no password needed.
 
 ## Credits
 

@@ -9,7 +9,8 @@
 -- F6 on Apple Silicon sends KEY_SLEEP. The plugin service holds a logind suspend-key inhibitor
 -- while media mode is active so this binding runs instead of a suspend.
 
-local generated = os.getenv("HOME") .. "/.config/hypr/mackeyboard.lua"
+local config_home = os.getenv("XDG_CONFIG_HOME") or (os.getenv("HOME") .. "/.config")  -- as keyboard-config.py
+local generated = config_home .. "/hypr/mackeyboard.lua"
 local generated_file = io.open(generated)
 if generated_file then
   generated_file:close()

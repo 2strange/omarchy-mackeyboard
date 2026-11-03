@@ -89,17 +89,27 @@ Panel {
     id: readProc
     command: ["python3", "-I", root.helper, "get"]
     stdout: StdioCollector {
-      onStreamFinished: { try { root.cfg = JSON.parse(text) } catch (e) { console.warn("mackeyboard: bad json", e) } }
+      onStreamFinished: {
+        try { root.cfg = JSON.parse(text) } catch (e) { console.warn("mackeyboard: bad json", e); return }
+        // kb_layout changed since the last write: rewrite kb_variant for the new layouts
+        if (root.cfg.stale && !root.cfg.foreign_loader) root.runConfig(["refresh"])
+      }
     }
   }
+  property int writeCode: 0
   Process {
     id: writeProc
-    stderr: StdioCollector { id: writeErr }
-    onExited: function(code) {
-      root.cfgError = code === 0 ? "" : code === 1 ? "Hyprland rejected the change, rolled back"
-        : (writeErr.text.trim().replace(/^keyboard-config: /, "") || "Could not apply the change")
-      if (code !== 0) console.warn("keyboard-config failed", code, writeErr.text)
-      root.refreshCfg()
+    onExited: function(code) { root.writeCode = code }
+    // The message is set when stderr is complete, which is after the exit.
+    stderr: StdioCollector {
+      onStreamFinished: {
+        var msg = text.trim().split("\n").pop().replace(/^keyboard-config: /, "")
+        root.cfgError = root.writeCode === 0 ? ""
+          : root.writeCode === 1 ? "Not applied, everything rolled back: " + (msg || "Hyprland reported an error")
+          : (msg || "Could not apply the change")
+        if (root.writeCode !== 0) console.warn("keyboard-config failed", root.writeCode, text)
+        root.refreshCfg()
+      }
     }
   }
 
@@ -137,9 +147,19 @@ Panel {
       onCloseRequested: root.close()
       onTabRequested: function(direction) { root.switchPanel(direction) }
 
+      // Scrolls when the menu is taller than the screen allows (the panel caps its height).
+      Flickable {
+        id: scroller
+        anchors.fill: parent
+        contentWidth: width
+        contentHeight: column.implicitHeight
+        clip: true
+        boundsBehavior: Flickable.StopAtBounds
+        interactive: contentHeight > height
+
       Column {
         id: column
-        anchors.fill: parent
+        width: scroller.width
         spacing: Style.space(14)
 
         // ---------- Hero ----------
@@ -249,6 +269,14 @@ Panel {
 
         PanelSeparator { width: parent.width; foreground: root.fg }
 
+        Text {
+          visible: !!root.cfg.foreign_loader
+          width: parent.width
+          textFormat: Text.PlainText
+          text: "The " + (root.cfg.foreign_loader || "") + " plugin's block is still in ~/.config/hypr/bindings.lua, so the keys would be bound twice. Delete that marked block (not with its uninstall script: that removes the Fn helper this plugin uses too), then change settings here."
+          color: root.fg; font.family: root.fontFam; font.pixelSize: Style.font.caption; font.bold: true; wrapMode: Text.WordWrap
+        }
+
         // ---------- Mac layout ----------
         Item {
           width: parent.width
@@ -266,8 +294,10 @@ Panel {
               text: root.cfg.mac_available === false
                 ? "Your layout (" + (root.cfg.layout || "?") + ") has no Mac variant."
                 : root.cfg.mac_layout
-                  ? "Right Option types as on a Mac: ⌥L @   ⌥7 |   ⌥⇧7 \\   ⌥8 {   ⌥9 }   ⌥5 [   ⌥6 ]   ⌥N ~"
-                  : "Right Option is AltGr, as on a PC keyboard. Switch on for the Mac characters (⌥L @ and more)."
+                  ? "Right Option types as on a Mac" + ((root.cfg.examples || []).length
+                      ? ": " + root.cfg.examples.map(function(e) { return e.keys + " " + e.char }).join("   ")
+                      : ". The cheat sheet shows every character.")
+                  : "Right Option is AltGr, as on a PC keyboard. Switch on for the Mac characters of your layout."
               color: root.dim; font.family: root.fontFam; font.pixelSize: Style.font.caption; width: parent.width; wrapMode: Text.WordWrap
             }
           }
@@ -276,7 +306,7 @@ Panel {
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
             checked: !!root.cfg.mac_layout
-            enabled: root.cfg.mac_available === true && !writeProc.running
+            enabled: root.cfg.mac_available === true && !root.cfg.foreign_loader && !writeProc.running
             foreground: root.fg
             onToggled: root.runConfig(["set", "mac_layout=" + (root.cfg.mac_layout ? "false" : "true")])
           }
@@ -288,7 +318,7 @@ Panel {
           foreground: root.fg
           fontFamily: root.fontFam
           fontSize: Style.font.caption
-          onClicked: Quickshell.execDetached(["qs", "-p", root.cheatsheetDir])
+          onClicked: Quickshell.execDetached(["qs", "-n", "-p", root.cheatsheetDir])  // -n: one window, not one per click
         }
 
         // ---------- Special keys ----------
@@ -333,6 +363,7 @@ Panel {
                 width: Style.space(190)
                 showLabel: false
                 options: root.actionOptions
+                enabled: !root.cfg.foreign_loader
                 value: keyRow.editing ? "command" : keyRow.modelData.action
                 foreground: root.fg
                 fontFamily: root.fontFam
@@ -380,6 +411,7 @@ Panel {
           text: root.cfgError
           color: root.fg; font.family: root.fontFam; font.pixelSize: Style.font.caption; wrapMode: Text.WordWrap
         }
+      }
       }
     }
   }

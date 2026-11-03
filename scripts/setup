@@ -47,6 +47,13 @@ printf 'Installing the root helper and sudo rule for %s (asks for your password)
 printf '%s\n' "$helper_bytes" |
   /usr/bin/sudo /usr/bin/bash -c "$root_script" setup-root "$user_name"
 
+for old in io.github.2strange.mac-fnkeys io.github.alnandr.macbook-fn-keys; do
+  if [ -f "$bindings_file" ] && grep -qF -- "-- >>> $old >>>" "$bindings_file"; then
+    printf 'note: %s still has the block of %s; delete that marked block by hand (not with\n' "$bindings_file" "$old"
+    printf '      its uninstall script, which removes the helper this plugin uses too), or keys bind twice.\n'
+  fi
+done
+
 if [ -f "$bindings_file" ] && grep -qF "$marker_begin" "$bindings_file"; then
   printf 'Hyprland bindings already installed in %s.\n' "$bindings_file"
 else
@@ -72,4 +79,4 @@ if [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ] && [ -x /usr/bin/hyprctl ]; then
 fi
 
 printf '\nSetup complete. The function row now sends brightness, volume and media without Fn.\n'
-printf 'Click the Fn keys icon in the bar to switch between that and F1-F12.\n'
+printf 'Click the Apple icon (Mac Keyboard) in the bar to switch between that and F1-F12.\n'

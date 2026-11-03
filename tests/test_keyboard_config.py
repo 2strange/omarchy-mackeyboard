@@ -14,12 +14,19 @@ spec.loader.exec_module(kc)
 
 
 class FakeHypr:
-    """hyprctl getoption/reload/configerrors; errors appear after reload when `fail` is set."""
+    """hyprctl getoption/reload/configerrors; errors appear after reload when `fail` is set,
+    and every checked call fails when `down` is set (IPC gone)."""
     def __init__(self, layout="de", variant=""):
         self.options = {"input:kb_layout": layout, "input:kb_variant": variant}
         self.fail = False
+        self.down = False
         self.reloaded = 0
         self.errors = ""
+
+    def checked(self, *args):
+        if self.down:
+            raise RuntimeError("hyprctl reload failed: Couldn't connect")
+        return self(*args)
 
     def __call__(self, *args):
         if args[:2] == ("getoption", "-j"):
@@ -45,7 +52,8 @@ class Case(unittest.TestCase):
         self.bindings.write_text("-- user bindings\n")
         self.hypr = FakeHypr()
         for name, value in (("TARGET", str(self.dir / "mackeyboard.lua")), ("BINDINGS", str(self.bindings)),
-                            ("XKB_SYMBOLS", str(symbols)), ("hyprctl", self.hypr)):
+                            ("XKB_SYMBOLS", str(symbols)), ("hyprctl", self.hypr),
+                            ("hyprctl_checked", self.hypr.checked)):
             patcher = mock.patch.object(kc, name, value)
             patcher.start()
             self.addCleanup(patcher.stop)
@@ -57,9 +65,23 @@ class Case(unittest.TestCase):
 
 class Layout(Case):
     def test_mac_variant_only_where_the_layout_has_one(self):
-        self.assertEqual(kc.mac_variant(["de"], ""), "mac")
-        self.assertEqual(kc.mac_variant(["fi", "de"], "nodeadkeys,"), "nodeadkeys,mac")
+        self.assertEqual(kc.variant_for(["de"], {}, True), "mac")
+        self.assertEqual(kc.variant_for(["fi", "de"], {"fi": "nodeadkeys"}, True), "nodeadkeys,mac")
+        self.assertEqual(kc.variant_for(["fi", "de"], {"fi": "nodeadkeys", "de": "nodeadkeys"}, False), "nodeadkeys,nodeadkeys")
         self.assertFalse(kc.has_mac_variant("../etc/passwd"))
+
+    def test_first_touch_off_keeps_the_other_variants(self):
+        self.hypr.options.update({"input:kb_layout": "fi,de", "input:kb_variant": "nodeadkeys,mac"})
+        self.assertEqual(kc.main(["set", "mac_layout=false"]), 0)
+        self.assertIn('kb_variant = "nodeadkeys,"', self.generated())
+
+    def test_changed_layouts_are_stale_and_refresh_rewrites(self):
+        kc.main(["set", "mac_layout=true"])
+        self.hypr.options["input:kb_layout"] = "fi,de"
+        self.assertTrue(kc.info()["stale"])
+        self.assertEqual(kc.main(["refresh"]), 0)
+        self.assertIn('kb_variant = ",mac"', self.generated())
+        self.assertFalse(kc.info()["stale"])
 
     def test_switch_on_then_off_restores_the_own_variant(self):
         self.hypr.options["input:kb_variant"] = "nodeadkeys"
@@ -106,10 +128,15 @@ class Keys(Case):
         self.assertEqual(kc.main(["set", "key.XF86LaunchA=command"]), 2)
 
     def test_tampered_state_falls_back_to_defaults(self):
-        (self.dir / "mackeyboard.lua").write_text('-- state: {"keys": {"XF86LaunchA": "evil"}, "mac_layout": "yes"}\n')
+        (self.dir / "mackeyboard.lua").write_text('-- state: {"keys": {"XF86LaunchA": "evil", "XF86LaunchB": [], '
+                                                  '"XF86Search": "command"}, "commands": {"XF86Search": 7}, '
+                                                  '"mac_layout": "yes", "own_variants": {"de": "x\\"}}\n')
         s = kc.effective()
         self.assertEqual(s["keys"]["XF86LaunchA"], "apps")
+        self.assertEqual(s["keys"]["XF86LaunchB"], "menu")
+        self.assertEqual(s["keys"]["XF86Search"], "menu")
         self.assertIsNone(s["mac_layout"])
+        self.assertEqual(s["own_variants"], {})
 
 
 class Apply(Case):
@@ -123,6 +150,25 @@ class Apply(Case):
         self.assertEqual(kc.main(["set", "key.XF86LaunchA=menu"]), 1)
         self.assertFalse((self.dir / "mackeyboard.lua").exists())
         self.assertEqual(self.bindings.read_text(), "-- user bindings\n")
+
+    def test_hyprland_unreachable_puts_everything_back(self):
+        self.hypr.down = True
+        self.assertEqual(kc.main(["set", "key.XF86LaunchA=menu"]), 1)
+        self.assertFalse((self.dir / "mackeyboard.lua").exists())
+
+    def test_old_plugins_block_stops_the_write(self):
+        self.bindings.write_text("-- >>> io.github.2strange.mac-fnkeys >>>\nold\n-- <<< io.github.2strange.mac-fnkeys <<<\n")
+        self.assertEqual(kc.main(["set", "key.XF86LaunchA=menu"]), kc.EXIT_FOREIGN)
+        self.assertFalse((self.dir / "mackeyboard.lua").exists())
+        self.assertNotIn(kc.MARK_BEGIN, self.bindings.read_text())
+
+    def test_reset_removes_a_symlink_not_its_target(self):
+        real = self.dir / "dotfiles.lua"
+        real.write_text("-- state: {}\n")
+        (self.dir / "mackeyboard.lua").symlink_to(real)
+        self.assertEqual(kc.main(["reset"]), 0)
+        self.assertTrue(real.exists())
+        self.assertFalse((self.dir / "mackeyboard.lua").is_symlink())
 
     def test_reset_removes_the_settings(self):
         kc.main(["set", "mac_layout=true"])

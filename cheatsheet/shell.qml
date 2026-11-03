@@ -35,6 +35,7 @@ ShellRoot {
     color: shell.bg
     implicitWidth: 980
     implicitHeight: 470
+    onVisibleChanged: if (!visible) Qt.quit()  // closed by the compositor (Super+W): end the qs process too
     // Hyprland may tile the window: the keys scale with its width (13 keys plus the row offsets).
     readonly property real cap: Math.max(34, Math.min(72, (width - 48 - 12 * 6 - 46) / 13))
 

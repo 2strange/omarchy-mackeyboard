@@ -11,6 +11,7 @@ and the exit code is 1. The Fn switch itself (hid_apple fnmode) is not here: see
   keyboard-config set key.XF86LaunchA=apps # what a special key does (see ACTIONS)
   keyboard-config set-command XF86LaunchA 'omarchy-shell -q macos.dock altTabNext'
   keyboard-config cheatsheet               # Option characters of your layout's mac variant, as JSON
+  keyboard-config refresh                  # rewrite after kb_layout changed
   keyboard-config reset                    # remove mackeyboard.lua (the loader block stays)
 
 On the first write the loader block of scripts/setup is appended to ~/.config/hypr/bindings.lua
@@ -26,8 +27,9 @@ import tempfile
 
 PLUGIN_ID = "io.github.2strange.mackeyboard"
 HOME = os.path.expanduser("~")
-TARGET = os.path.join(HOME, ".config/hypr/mackeyboard.lua")
-BINDINGS = os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.join(HOME, ".config"), "hypr/bindings.lua")
+CONFIG = os.environ.get("XDG_CONFIG_HOME") or os.path.join(HOME, ".config")  # the hypr/bindings.lua loaders use the same
+TARGET = os.path.join(CONFIG, "hypr/mackeyboard.lua")
+BINDINGS = os.path.join(CONFIG, "hypr/bindings.lua")
 MARK_BEGIN = f"-- >>> {PLUGIN_ID} >>>"
 MARK_END = f"-- <<< {PLUGIN_ID} <<<"
 LOADER = f"""
@@ -42,6 +44,13 @@ if mac_keyboard_file then
 end
 {MARK_END}
 """
+# Loader blocks of the plugins this one replaces: with one of them still in bindings.lua the special
+# keys would be bound twice (and e.g. a menu would open and close at once), so writing stops.
+FOREIGN_MARKS = {
+    "-- >>> io.github.2strange.mac-fnkeys >>>": "Mac Fn keys",
+    "-- >>> io.github.alnandr.macbook-fn-keys >>>": "MacBook Function Keys",
+}
+EXIT_FOREIGN = 4
 STATE_PREFIX = "-- state: "
 XKB_SYMBOLS = "/usr/share/X11/xkb/symbols"
 
@@ -81,6 +90,14 @@ def hyprctl(*args):
     return subprocess.run(["hyprctl", *args], capture_output=True, text=True, timeout=5).stdout
 
 
+def hyprctl_checked(*args):
+    """stdout of a hyprctl call that must work; raises when it fails (missing, IPC down, error)."""
+    r = subprocess.run(["hyprctl", *args], capture_output=True, text=True, timeout=5)
+    if r.returncode != 0:
+        raise RuntimeError(f"hyprctl {' '.join(args)} failed: {(r.stderr or r.stdout).strip() or r.returncode}")
+    return r.stdout
+
+
 def live_str(option):
     try:
         return str(json.loads(hyprctl("getoption", "-j", option)).get("str", ""))
@@ -98,11 +115,11 @@ def read(path):
 
 def put(path, text):
     """Atomic write; None removes the file."""
-    path = os.path.realpath(path)  # write through a symlink (dotfile managers) instead of replacing it
     if text is None:
-        if os.path.exists(path):
-            os.remove(path)
+        if os.path.lexists(path):
+            os.remove(path)  # a symlink is removed, never the file it points to
         return
+    path = os.path.realpath(path)  # write through a symlink (dotfile managers) instead of replacing it
     try:
         mode = os.stat(path).st_mode & 0o7777
     except FileNotFoundError:
@@ -177,45 +194,72 @@ def layouts():
     return [part.strip() for part in live_str("input:kb_layout").split(",")]
 
 
-def mac_variant(lays, own):
-    """kb_variant with "mac" for every layout that has one; the others keep their own variant."""
-    own_parts = own.split(",") if own else []
-    out = []
+def own_variants_now(lays):
+    """{layout: variant} as configured now, without "mac" (that is what the switch adds)."""
+    parts = [part.strip() for part in live_str("input:kb_variant").split(",")]
+    out = {}
     for i, lay in enumerate(lays):
-        mine = own_parts[i].strip() if i < len(own_parts) else ""
-        out.append("mac" if has_mac_variant(lay) else mine)
-    return ",".join(out)
+        mine = parts[i] if i < len(parts) else ""
+        out[lay] = "" if mine == "mac" else mine
+    return out
+
+
+def variant_for(lays, own, mac):
+    """kb_variant for these layouts: "mac" where the layout has one (if mac), else the own variant."""
+    return ",".join("mac" if mac and has_mac_variant(lay) else own.get(lay, "") for lay in lays)
+
+
+def active_layout(lays):
+    """The layout the main keyboard uses right now (first one if Hyprland does not say)."""
+    try:
+        boards = json.loads(hyprctl("devices", "-j")).get("keyboards", [])
+        main = next((b for b in boards if b.get("main")), boards[0] if boards else {})
+        idx = int(main.get("active_layout_index", 0))
+    except (ValueError, TypeError, subprocess.SubprocessError, AttributeError, IndexError):
+        idx = 0
+    return lays[idx] if 0 <= idx < len(lays) else (lays[0] if lays else "us")
 
 
 # ---------------------------------------------------------------- state -> lua
 
+def good_command(v):
+    return isinstance(v, str) and v.strip() != "" and "\n" not in v and "\r" not in v
+
+
 def effective():
+    """The saved state, every field checked: anything odd falls back to the default."""
     state = saved()
     keys = state.get("keys") if isinstance(state.get("keys"), dict) else {}
     commands = state.get("commands") if isinstance(state.get("commands"), dict) else {}
+    commands = {k: v.strip() for k, v in commands.items() if k in KEYSYMS and good_command(v)}
+    own = state.get("own_variants") if isinstance(state.get("own_variants"), dict) else {}
+    own = {k: v for k, v in own.items()
+           if isinstance(k, str) and re.fullmatch(r"[a-z]{2,8}", k) and isinstance(v, str) and re.fullmatch(r"[a-z0-9_]*", v)}
     out_keys = {}
     for k in KEYS:
         action = keys.get(k["keysym"], k["default"])
-        if action not in ACTIONS or (action == "command" and not commands.get(k["keysym"])):
+        if not isinstance(action, str) or action not in ACTIONS or (action == "command" and k["keysym"] not in commands):
             action = k["default"]
         out_keys[k["keysym"]] = action
+    mac = state.get("mac_layout")
+    written = state.get("written_for")
     return {
-        "mac_layout": state.get("mac_layout") if isinstance(state.get("mac_layout"), bool) else None,
-        "own_variant": str(state.get("own_variant", "")),
+        "mac_layout": mac if isinstance(mac, bool) else None,
+        "own_variants": own,
+        "written_for": written if isinstance(written, list) and all(isinstance(x, str) for x in written) else [],
         "keys": out_keys,
-        "commands": {k: str(v) for k, v in commands.items() if k in KEYSYMS and isinstance(v, str) and v.strip()},
+        "commands": commands,
     }
 
 
 def render(s, lays):
-    state = {"mac_layout": s["mac_layout"], "own_variant": s["own_variant"],
+    state = {"mac_layout": s["mac_layout"], "own_variants": s["own_variants"], "written_for": lays,
              "keys": s["keys"], "commands": s["commands"]}
     lines = [STATE_PREFIX + json.dumps(state, sort_keys=True),
              f"-- Generated by the Mac Keyboard bar plugin ({PLUGIN_ID}). Edit through its menu, not by hand.", ""]
-    if s["mac_layout"] is True:
-        lines.append(f"hl.config({{ input = {{ kb_variant = {lua_string(mac_variant(lays, s['own_variant']))} }} }})")
-    elif s["mac_layout"] is False:
-        lines.append(f"hl.config({{ input = {{ kb_variant = {lua_string(s['own_variant'])} }} }})")
+    if s["mac_layout"] is not None:
+        # written for these layouts (kb_layout = "{','.join(lays)}"); the menu rewrites it when they change
+        lines.append(f"hl.config({{ input = {{ kb_variant = {lua_string(variant_for(lays, s['own_variants'], s['mac_layout']))} }} }})")
     lines.append("")
     for k in KEYS:
         sym = k["keysym"]
@@ -237,13 +281,14 @@ def render(s, lays):
 def apply(changes):
     """Write {path: text}, reload Hyprland, and put every file back if it reports errors."""
     old = {path: read(path) for path in changes}
+    before = None
     try:
-        before = hyprctl("configerrors").strip()
+        before = hyprctl_checked("configerrors").strip()
         for path, text in changes.items():
             put(path, text)
-        hyprctl("reload")
-        errors = hyprctl("configerrors").strip()
-    except Exception as err:  # hyprctl missing or timing out: never leave a half-applied change
+        hyprctl_checked("reload")
+        errors = hyprctl_checked("configerrors").strip()
+    except Exception as err:  # hyprctl missing, IPC down or timing out: never leave a half-applied change
         errors, before = f"keyboard-config: {err}", None
     if errors and errors != before:
         for path, text in old.items():
@@ -257,9 +302,20 @@ def apply(changes):
     return 0
 
 
+def foreign_loader(text=None):
+    """Name of a replaced plugin whose loader block is still in bindings.lua, or ""."""
+    text = read(BINDINGS) if text is None else text
+    return next((name for mark, name in FOREIGN_MARKS.items() if mark in (text or "")), "")
+
+
 def write(state):
-    changes = {TARGET: render(state, layouts())}
     current = read(BINDINGS) or ""
+    other = foreign_loader(current)
+    if other:
+        print(f"keyboard-config: the {other} plugin's block is still in {BINDINGS}: remove that marked block "
+              f"first (not with its uninstall script, that removes the Fn helper this plugin uses too)", file=sys.stderr)
+        return EXIT_FOREIGN
+    changes = {TARGET: render(state, layouts())}
     if MARK_BEGIN not in current:
         changes[BINDINGS] = current.rstrip("\n") + "\n" + LOADER
     return apply(changes)
@@ -335,6 +391,30 @@ def cheatsheet(layout, variant):
 
 # ---------------------------------------------------------------- cli
 
+# The characters people coming from a Mac look for first, in the order the menu shows them.
+EXAMPLE_CHARS = "@|\\{}[]~"
+KEY_LABEL = {"AB06": "N", "AC09": "L"}  # fallback labels; normally the key's own base character
+
+
+def examples(layout):
+    """[{char, keys}] for EXAMPLE_CHARS on this layout's Mac variant, e.g. {"@": "⌥L"}; [] if unknown."""
+    if not has_mac_variant(layout):
+        return []
+    try:
+        rows = cheatsheet(layout, "mac")
+    except (OSError, ValueError):
+        return []
+    found = {}
+    for row in rows:
+        for k in row:
+            label = (k["base"].replace("\u0332", "") or KEY_LABEL.get(k["key"], k["key"])).upper()
+            for level, prefix in (("option", "⌥"), ("shift_option", "⌥⇧")):
+                ch = k[level].replace("\u0332", "")
+                if ch in EXAMPLE_CHARS and ch not in found:
+                    found[ch] = prefix + label
+    return [{"char": ch, "keys": found[ch]} for ch in EXAMPLE_CHARS if ch in found]
+
+
 def info():
     s = effective()
     lays = layouts()
@@ -342,11 +422,17 @@ def info():
     variant = live_str("input:kb_variant")
     available = any(has_mac_variant(lay) for lay in lays)
     mac_now = s["mac_layout"] if s["mac_layout"] is not None else ("mac" in variant.split(","))
+    active = active_layout(lays)
     return {
         "mac_layout": mac_now,
         "mac_available": available,
         "layout": ",".join(lays),
+        "active_layout": active,
         "variant": variant,
+        # kb_layout changed since the menu last wrote kb_variant: the menu rewrites it
+        "stale": s["mac_layout"] is not None and s["written_for"] != lays,
+        "foreign_loader": foreign_loader(),
+        "examples": examples(active) if mac_now else [],
         "family": fam,
         "model": model(),
         "keys": [dict(k, action=s["keys"][k["keysym"]], command=s["commands"].get(k["keysym"], ""),
@@ -373,13 +459,20 @@ def main(argv):
         return 0
     if cmd == "cheatsheet":
         lays = layouts()
-        lay = next((x for x in lays if has_mac_variant(x)), lays[0] if lays else "us")
+        lay = active_layout(lays)  # the layout you type with right now
         variant = "mac" if has_mac_variant(lay) else ""
         print(json.dumps({"layout": lay, "variant": variant, "rows": cheatsheet(lay, variant)}, ensure_ascii=False))
         return 0
     if cmd == "reset":
         return apply({TARGET: None})
     s = effective()
+    lays = layouts()
+    if s["mac_layout"] is None or any(lay not in s["own_variants"] for lay in lays):
+        # first touch, or a layout the plugin has not seen: remember the variants it has now
+        now = own_variants_now(lays)
+        s["own_variants"] = dict(now, **s["own_variants"]) if s["mac_layout"] is not None else now
+    if cmd == "refresh":  # rewrite for the current kb_layout
+        return write(s)
     if cmd == "set":
         for arg in args:
             key, sep, raw = arg.partition("=")
@@ -389,12 +482,9 @@ def main(argv):
             try:
                 if key == "mac_layout":
                     on = parse_bool(raw)
-                    if on and not any(has_mac_variant(lay) for lay in layouts()):
+                    if on and not any(has_mac_variant(lay) for lay in lays):
                         print("keyboard-config: your keyboard layout has no Mac variant", file=sys.stderr)
                         return 2
-                    if on and s["mac_layout"] is not True:
-                        own = live_str("input:kb_variant")  # remember the variant to go back to
-                        s["own_variant"] = ",".join("" if part.strip() == "mac" else part for part in own.split(",")) if own else ""
                     s["mac_layout"] = on
                 elif key.startswith("key.") and key[4:] in KEYSYMS:
                     if raw not in ACTIONS or raw == "command":
