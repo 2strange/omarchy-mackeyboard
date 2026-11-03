@@ -20,5 +20,4 @@ else
   -- Intel MacBooks (e.g. MacBookPro11,3) send KEY_DASHBOARD (Launchpad) on F4 instead of Spotlight.
   o.bind("XF86LaunchB", "Launchpad", "omarchy-menu toggle", { locked = true })
   o.bind_toggle("XF86Sleep", "Do Not Disturb", "notification-silencing", { locked = true })
-  if o.cmd_present("voxtype") then o.bind("XF86Dictate", "Toggle dictation", "voxtype record toggle") end
 end

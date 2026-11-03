@@ -52,13 +52,14 @@ KEYS = [
     {"keysym": "XF86LaunchB", "fn": "F4", "label": "Launchpad", "on": ["intel"], "default": "menu"},
     {"keysym": "XF86Search", "fn": "F4", "label": "Spotlight", "on": ["apple-silicon"], "default": "menu"},
     {"keysym": "XF86KbdBrightnessDown", "fn": "F5", "label": "Keyboard light down", "on": ["intel"], "default": "kbd_down"},
-    {"keysym": "XF86Dictate", "fn": "F5", "label": "Dictation", "on": ["apple-silicon"], "default": "dictation"},
+    # Measured upstream on a MacBookPro18,3 (M1 Pro): Dictation sends KEY_MICMUTE.
+    {"keysym": "XF86AudioMicMute", "fn": "F5", "label": "Dictation", "on": ["apple-silicon"], "default": "mic_mute"},
     {"keysym": "XF86KbdBrightnessUp", "fn": "F6", "label": "Keyboard light up", "on": ["intel"], "default": "kbd_up"},
     {"keysym": "XF86Sleep", "fn": "F6", "label": "Do Not Disturb", "on": ["apple-silicon"], "default": "dnd"},
 ]
 KEYSYMS = {k["keysym"]: k for k in KEYS}
 # Keys Omarchy itself binds: a different action has to unbind Omarchy's first.
-OMARCHY_BOUND = {"XF86KbdBrightnessDown", "XF86KbdBrightnessUp"}
+OMARCHY_BOUND = {"XF86KbdBrightnessDown", "XF86KbdBrightnessUp", "XF86AudioMicMute"}
 
 # value -> (label, lua that binds it; {key} is the keysym as a Lua string)
 ACTIONS = {
@@ -68,6 +69,7 @@ ACTIONS = {
     "dnd": ("Do Not Disturb", 'o.bind_toggle({key}, "Do Not Disturb", "notification-silencing", {{ locked = true }})'),
     "kbd_down": ("Keyboard light down", 'o.bind({key}, "Keyboard brightness down", "omarchy-brightness-keyboard down", {{ locked = true, repeating = true }})'),
     "kbd_up": ("Keyboard light up", 'o.bind({key}, "Keyboard brightness up", "omarchy-brightness-keyboard up", {{ locked = true, repeating = true }})'),
+    "mic_mute": ("Microphone mute", 'o.bind({key}, "Mute microphone", "omarchy-audio-input-mute", {{ locked = true }})'),
     "screenshot": ("Screenshot", 'o.bind({key}, "Screenshot", "omarchy-capture-screenshot")'),
     "capture": ("Capture menu", 'o.bind({key}, "Capture menu", "omarchy-menu toggle capture")'),
     "dictation": ("Dictation (voxtype)", 'if o.cmd_present("voxtype") then o.bind({key}, "Toggle dictation", "voxtype record toggle") end'),
