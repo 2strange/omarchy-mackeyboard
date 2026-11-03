@@ -32,6 +32,17 @@ brings that back on Omarchy, together with the function row the way macOS has it
 
 ![Mac Keyboard menu in the Omarchy bar](preview.png)
 
+<table>
+  <tr>
+    <td width="30%"><img src="docs/images/menu.png" alt="The Mac Keyboard menu: Fn switch, Mac layout switch, special keys"></td>
+    <td><img src="docs/images/cheatsheet.png" alt="Cheat sheet of every Option and Shift+Option character on a German Mac layout"></td>
+  </tr>
+  <tr>
+    <td align="center">The menu</td>
+    <td align="center">All Option characters: the cheat sheet, read from your layout</td>
+  </tr>
+</table>
+
 ## Bar icon and menu
 
 | Icon | Meaning |
