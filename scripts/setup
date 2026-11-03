@@ -36,6 +36,14 @@ fail() {
 user_name=$(id -un)
 [[ $user_name =~ ^[a-z_][a-z0-9_-]*$ ]] || fail "unexpected user name '$user_name'"
 
+# The plugins this one replaces bind the same keys: with their block still there every key would
+# bind twice. Stop before anything is installed.
+for old in io.github.2strange.mac-fnkeys io.github.alnandr.macbook-fn-keys; do
+  if [ -f "$bindings_file" ] && grep -qF -- "-- >>> $old >>>" "$bindings_file"; then
+    fail "$bindings_file still has the block of $old: delete that marked block by hand first (not with its uninstall script, which removes the helper this plugin uses too)"
+  fi
+done
+
 # Capture both privileged inputs into memory now, before any prompt.
 root_script=$(<"$plugin_dir/scripts/setup-root")
 helper_bytes=$(<"$plugin_dir/scripts/omarchy-mac-fnmode")
@@ -46,13 +54,6 @@ printf 'Installing the root helper and sudo rule for %s (asks for your password)
 # $(<file) strips the trailing newline; restore it so the hash matches the pin.
 printf '%s\n' "$helper_bytes" |
   /usr/bin/sudo /usr/bin/bash -c "$root_script" setup-root "$user_name"
-
-for old in io.github.2strange.mac-fnkeys io.github.alnandr.macbook-fn-keys; do
-  if [ -f "$bindings_file" ] && grep -qF -- "-- >>> $old >>>" "$bindings_file"; then
-    printf 'note: %s still has the block of %s; delete that marked block by hand (not with\n' "$bindings_file" "$old"
-    printf '      its uninstall script, which removes the helper this plugin uses too), or keys bind twice.\n'
-  fi
-done
 
 if [ -f "$bindings_file" ] && grep -qF "$marker_begin" "$bindings_file"; then
   printf 'Hyprland bindings already installed in %s.\n' "$bindings_file"

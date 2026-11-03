@@ -91,25 +91,27 @@ Panel {
     stdout: StdioCollector {
       onStreamFinished: {
         try { root.cfg = JSON.parse(text) } catch (e) { console.warn("mackeyboard: bad json", e); return }
-        // kb_layout changed since the last write: rewrite kb_variant for the new layouts
-        if (root.cfg.stale && !root.cfg.foreign_loader) root.runConfig(["refresh"])
+        // kb_layout changed since the last write: rewrite kb_variant for the new layouts, once per
+        // layout set (a failed rewrite is rolled back and stays stale; it must not loop)
+        if (root.cfg.stale && !root.cfg.foreign_loader && root.autoRefreshed !== root.cfg.layout) {
+          root.autoRefreshed = root.cfg.layout
+          root.runConfig(["refresh"])
+        }
       }
     }
   }
-  property int writeCode: 0
+  property string autoRefreshed: ""
   Process {
     id: writeProc
-    onExited: function(code) { root.writeCode = code }
-    // The message is set when stderr is complete, which is after the exit.
-    stderr: StdioCollector {
-      onStreamFinished: {
-        var msg = text.trim().split("\n").pop().replace(/^keyboard-config: /, "")
-        root.cfgError = root.writeCode === 0 ? ""
-          : root.writeCode === 1 ? "Not applied, everything rolled back: " + (msg || "Hyprland reported an error")
-          : (msg || "Could not apply the change")
-        if (root.writeCode !== 0) console.warn("keyboard-config failed", root.writeCode, text)
-        root.refreshCfg()
-      }
+    // Quickshell finishes the stderr stream before it reports the exit, so the text is complete here.
+    stderr: StdioCollector { id: writeErr }
+    onExited: function(code) {
+      var msg = writeErr.text.trim().split("\n").pop().replace(/^keyboard-config: /, "")
+      root.cfgError = code === 0 ? ""
+        : code === 1 ? "Not applied, everything rolled back: " + (msg || "Hyprland reported an error")
+        : (msg || "Could not apply the change")
+      if (code !== 0) console.warn("keyboard-config failed", code, writeErr.text)
+      root.refreshCfg()
     }
   }
 

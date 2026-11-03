@@ -194,19 +194,29 @@ def layouts():
     return [part.strip() for part in live_str("input:kb_layout").split(",")]
 
 
+def slots(lays):
+    """A key per layout position that survives reordering: "us#0", "us#1", "de#0" for us,us,de."""
+    seen = {}
+    out = []
+    for lay in lays:
+        out.append(f"{lay}#{seen.get(lay, 0)}")
+        seen[lay] = seen.get(lay, 0) + 1
+    return out
+
+
 def own_variants_now(lays):
-    """{layout: variant} as configured now, without "mac" (that is what the switch adds)."""
+    """{slot: variant} as configured now, without "mac" (that is what the switch adds)."""
     parts = [part.strip() for part in live_str("input:kb_variant").split(",")]
     out = {}
-    for i, lay in enumerate(lays):
+    for i, slot in enumerate(slots(lays)):
         mine = parts[i] if i < len(parts) else ""
-        out[lay] = "" if mine == "mac" else mine
+        out[slot] = "" if mine == "mac" else mine
     return out
 
 
 def variant_for(lays, own, mac):
     """kb_variant for these layouts: "mac" where the layout has one (if mac), else the own variant."""
-    return ",".join("mac" if mac and has_mac_variant(lay) else own.get(lay, "") for lay in lays)
+    return ",".join("mac" if mac and has_mac_variant(lay) else own.get(slot, "") for lay, slot in zip(lays, slots(lays)))
 
 
 def active_layout(lays):
@@ -234,7 +244,7 @@ def effective():
     commands = {k: v.strip() for k, v in commands.items() if k in KEYSYMS and good_command(v)}
     own = state.get("own_variants") if isinstance(state.get("own_variants"), dict) else {}
     own = {k: v for k, v in own.items()
-           if isinstance(k, str) and re.fullmatch(r"[a-z]{2,8}", k) and isinstance(v, str) and re.fullmatch(r"[a-z0-9_]*", v)}
+           if isinstance(k, str) and re.fullmatch(r"[a-z]{2,8}#[0-9]{1,2}", k) and isinstance(v, str) and re.fullmatch(r"[a-z0-9_]*", v)}
     out_keys = {}
     for k in KEYS:
         action = keys.get(k["keysym"], k["default"])
@@ -278,9 +288,29 @@ def render(s, lays):
     return "\n".join(lines) + "\n"
 
 
+def snapshot(path):
+    """What is at path now, symlinks included, so a rollback restores exactly that."""
+    if os.path.islink(path):
+        return ("link", os.readlink(path), read(path))  # the link and what its target held
+    return ("file", None, read(path))
+
+
+def restore(path, snap):
+    kind, target, text = snap
+    if kind == "link":
+        if os.path.lexists(path) and not (os.path.islink(path) and os.readlink(path) == target):
+            os.remove(path)
+        if not os.path.lexists(path):
+            os.symlink(target, path)
+        if text is not None:
+            put(path, text)  # writes through the link into its target again
+        return
+    put(path, text)
+
+
 def apply(changes):
     """Write {path: text}, reload Hyprland, and put every file back if it reports errors."""
-    old = {path: read(path) for path in changes}
+    old = {path: snapshot(path) for path in changes}
     before = None
     try:
         before = hyprctl_checked("configerrors").strip()
@@ -291,8 +321,8 @@ def apply(changes):
     except Exception as err:  # hyprctl missing, IPC down or timing out: never leave a half-applied change
         errors, before = f"keyboard-config: {err}", None
     if errors and errors != before:
-        for path, text in old.items():
-            put(path, text)
+        for path, snap in old.items():
+            restore(path, snap)
         try:
             hyprctl("reload")
         except Exception:
@@ -467,7 +497,7 @@ def main(argv):
         return apply({TARGET: None})
     s = effective()
     lays = layouts()
-    if s["mac_layout"] is None or any(lay not in s["own_variants"] for lay in lays):
+    if s["mac_layout"] is None or any(slot not in s["own_variants"] for slot in slots(lays)):
         # first touch, or a layout the plugin has not seen: remember the variants it has now
         now = own_variants_now(lays)
         s["own_variants"] = dict(now, **s["own_variants"]) if s["mac_layout"] is not None else now

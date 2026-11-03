@@ -66,8 +66,13 @@ class Case(unittest.TestCase):
 class Layout(Case):
     def test_mac_variant_only_where_the_layout_has_one(self):
         self.assertEqual(kc.variant_for(["de"], {}, True), "mac")
-        self.assertEqual(kc.variant_for(["fi", "de"], {"fi": "nodeadkeys"}, True), "nodeadkeys,mac")
-        self.assertEqual(kc.variant_for(["fi", "de"], {"fi": "nodeadkeys", "de": "nodeadkeys"}, False), "nodeadkeys,nodeadkeys")
+        self.assertEqual(kc.variant_for(["fi", "de"], {"fi#0": "nodeadkeys"}, True), "nodeadkeys,mac")
+        self.assertEqual(kc.variant_for(["fi", "de"], {"fi#0": "nodeadkeys", "de#0": "nodeadkeys"}, False), "nodeadkeys,nodeadkeys")
+
+    def test_the_same_layout_twice_keeps_both_variants(self):
+        self.hypr.options.update({"input:kb_layout": "us,us", "input:kb_variant": "intl,dvorak"})
+        self.assertEqual(kc.main(["set", "mac_layout=false"]), 0)
+        self.assertIn('kb_variant = "intl,dvorak"', self.generated())
         self.assertFalse(kc.has_mac_variant("../etc/passwd"))
 
     def test_first_touch_off_keeps_the_other_variants(self):
@@ -169,6 +174,18 @@ class Apply(Case):
         self.assertEqual(kc.main(["reset"]), 0)
         self.assertTrue(real.exists())
         self.assertFalse((self.dir / "mackeyboard.lua").is_symlink())
+
+    def test_failed_write_through_a_symlink_restores_link_and_target(self):
+        real = self.dir / "dotfiles.lua"
+        real.write_text("-- state: {}\nkeep\n")
+        (self.dir / "mackeyboard.lua").symlink_to(real)
+        self.hypr.fail = True
+        self.assertEqual(kc.main(["set", "key.XF86LaunchA=menu"]), 1)
+        self.assertTrue((self.dir / "mackeyboard.lua").is_symlink())
+        self.assertEqual(real.read_text(), "-- state: {}\nkeep\n")
+        self.hypr.fail, self.hypr.down = False, True
+        self.assertEqual(kc.main(["reset"]), 1)  # reset fails too (Hyprland unreachable): the link comes back
+        self.assertTrue((self.dir / "mackeyboard.lua").is_symlink())
 
     def test_reset_removes_the_settings(self):
         kc.main(["set", "mac_layout=true"])

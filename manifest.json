@@ -5,7 +5,7 @@
   "version": "2.0.0",
   "author": "2strange (Fn switch based on MacBook Function Keys by Alan Garcia)",
   "license": "MIT",
-  "description": "A MacBook keyboard that types like on a Mac: the right Option key gives the Mac characters of your own layout (Option+L = @, Option+7 = |, Option+8 = { ...) with a cheat sheet window, the function row switches between the printed Mac functions and F1-F12 (kernel fnmode, no remapping), and the keys that differ between Mac generations (Mission Control, Launchpad or Spotlight, keyboard light, Dictation, Do Not Disturb) can be set in the menu.",
+  "description": "A MacBook keyboard that types like on a Mac: the right Option key gives the Mac characters of your own layout (German: Option+L = @, Option+7 = |, Option+8 = {) with a cheat sheet window, the function row switches between the printed Mac functions and F1-F12 (kernel fnmode, no remapping), and the keys that differ between Mac generations (Mission Control, Launchpad or Spotlight, keyboard light, Dictation, Do Not Disturb) can be set in the menu.",
   "kinds": [
     "service",
     "bar-widget"
